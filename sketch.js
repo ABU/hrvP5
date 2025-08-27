@@ -17,7 +17,7 @@ function setup() {
   noStroke();
 
   // 速度控制
-  speedSlider = createSlider(0.1, 5, 1, 0.1);
+  speedSlider = createSlider(0.1, 8, 2, 0.1);
   speedSlider.position(20, 20);
 
   // 顏色位置控制（0 ~ 1）
@@ -30,14 +30,29 @@ function setup() {
 
   targetDensity = densitySlider.value();
   addParticles(targetDensity);
+  // 啟動資料讀取輪詢
+  setTimeout(dataPreceed, 1000);
 }
 
 function draw() {
   background(0, 0, 100); // 白色背景
 
-  let Pspeed = speedSlider.value();
-  let huePos = huePosSlider.value(); // 0 ~ 1，控制顏色
-  targetDensity = densitySlider.value();
+  //let Pspeed = speedSlider.value();
+  //let huePos = huePosSlider.value(); // 0 ~ 1，控制顏色
+  //targetDensity = densitySlider.value();
+
+  let Pspeed = (curHR !== undefined && curHR !== null)
+  ? constrain(map(float(curHR), 40, 180, 0.1, 5), 0.1, 5)
+  : speedSlider.value();
+  Pspeed *= 1.5;
+
+let huePos = (curLF !== undefined && curLF !== null)
+  ? constrain(map(float(curLF), 0, 100, 0, 1), 0, 1)
+  : huePosSlider.value();
+
+targetDensity = (curMF !== undefined && curMF !== null)
+  ? Math.round(constrain(map(float(curMF), 0, 100, 200, 3000), 200, 3000))
+  : densitySlider.value();
   
     // 更新變數值
   //curHR = speedSlider.value(); // 從 speedSlider 更新 curHR
@@ -69,7 +84,7 @@ function draw() {
 
   for (let p of particles) {
     let hueShift = lerp(hueStart, hueEnd, (p.colorOffset + 30) / 60.0);
-    fill(hueShift % 360, 50, 100, p.alpha);
+    fill(hueShift % 360, 85, 100, p.alpha);
 
     push();
     let nx = noise(p.x * 0.002, frameCount * 0.002 + p.noiseSeed) * 50 - 25;
@@ -95,7 +110,7 @@ function addParticles(num) {
       y: random(-height, height),
       z: random(-2000, 100),
       size: random(2, 8),
-      alpha: random(5, 20),
+      alpha: random(40, 80),
       colorOffset: random(-30, 30),
       noiseSeed: random(1000)
     });
