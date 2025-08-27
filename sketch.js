@@ -2,6 +2,7 @@ let particles = [];
 let speedSlider, huePosSlider, densitySlider;
 let targetDensity;
 let noiseOffset = 0;
+let manualCheckbox;
 
 
 let curHR, curMF, curLF;  
@@ -28,36 +29,53 @@ function setup() {
   densitySlider = createSlider(200, 3000, 1500, 10);
   densitySlider.position(20, 80);
 
+  // 手動模式
+  manualCheckbox = createCheckbox('Manual (use sliders)', false);
+  manualCheckbox.position(20, 110);
+
   targetDensity = densitySlider.value();
   addParticles(targetDensity);
   // 啟動資料讀取輪詢
   setTimeout(dataPreceed, 1000);
+
+  // 強制禁用快取
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', function() {
+      // 清除快取
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (let name of names) caches.delete(name);
+        });
+      }
+    });
+  }
 }
 
 function draw() {
   background(0, 0, 100); // 白色背景
 
-  //let Pspeed = speedSlider.value();
-  //let huePos = huePosSlider.value(); // 0 ~ 1，控制顏色
-  //targetDensity = densitySlider.value();
+  let useManual = manualCheckbox && manualCheckbox.checked();
 
-  let Pspeed = (curHR !== undefined && curHR !== null)
-  ? constrain(map(float(curHR), 40, 180, 0.1, 5), 0.1, 5)
-  : speedSlider.value();
+  let Pspeed = useManual
+  ? speedSlider.value()
+  : ((curHR !== undefined && curHR !== null)
+    ? constrain(map(float(curHR), 40, 180, 0.1, 5), 0.1, 5)
+    : speedSlider.value());
   Pspeed *= 1.5;
 
-let huePos = (curLF !== undefined && curLF !== null)
-  ? constrain(map(float(curLF), 0, 100, 0, 1), 0, 1)
-  : huePosSlider.value();
+  let huePos = useManual
+  ? huePosSlider.value()
+  : ((curLF !== undefined && curLF !== null)
+    ? constrain(map(float(curLF), 0, 100, 0, 1), 0, 1)
+    : huePosSlider.value());
 
-targetDensity = (curMF !== undefined && curMF !== null)
-  ? Math.round(constrain(map(float(curMF), 0, 100, 200, 3000), 200, 3000))
-  : densitySlider.value();
+  targetDensity = useManual
+  ? densitySlider.value()
+  : ((curMF !== undefined && curMF !== null)
+    ? Math.round(constrain(map(float(curMF), 0, 100, 200, 3000), 200, 3000))
+    : densitySlider.value());
   
-    // 更新變數值
-  //curHR = speedSlider.value(); // 從 speedSlider 更新 curHR
-  //curLF = huePosSlider.value(); // 從 huePosSlider 更新 curLF
- //curMF = densitySlider.value(); // 從 densitySlider 更新 curMF
+
   
   // 漸補 / 漸減
   if (particles.length < targetDensity) {
@@ -76,10 +94,10 @@ targetDensity = (curMF !== undefined && curMF !== null)
     hueStart = lerp(250, 120, t);
     hueEnd = lerp(250, 120, t);
   } else {
-    // 綠到紅橙
-    let t = (huePos - 0.5) / 0.5;
-    hueStart = lerp(120, 20, t);
-    hueEnd = lerp(120, 20, t);
+    // 綠到「更橘紅」
+    let t = pow((huePos - 0.5) / 0.5, 0.6); // ease-out，加速靠近紅橘
+    hueStart = lerp(120, 5, t);
+    hueEnd = lerp(120, 5, t);
   }
 
   for (let p of particles) {
@@ -118,19 +136,49 @@ function addParticles(num) {
 }
 
 function dataPreceed(){
-  //let splitString = split(result, ' ');
-let splitString = split(result.toString(),"  ");
-let len = splitString[16].length;
-let substr = split(splitString[16],";");
-//console.log(split(substr[0],";"));
-curHR = substr[0];
-//gui.SDNN = splitString[15];
-curMF = splitString[9];
-curLF = splitString[8];
-console.log("HR:"+curHR+", MF:"+curMF+", LF:"+curLF);
+  try {
+    // 加入時間戳避免快取
+    const timestamp = Date.now();
+    const url = `Starwalk.txt?t=${timestamp}`;
+    
+    loadStrings(url, function(data) {
+      if (data && data.length > 0) {
+        const text = Array.isArray(data) ? data.join(' ') : String(data);
+        const tokens = text.split(/\s+/); // 以任意空白切分
+        
+        console.log("Raw data:", text); // 除錯用：看原始資料
+        console.log("Tokens count:", tokens.length); // 除錯用：看切分後數量
 
-result  = loadStrings("Starwalk.txt");
-setTimeout(dataPreceed,1000);
+        // 盡量維持原本邏輯，但加上安全檢查
+        if (tokens.length > 16) {
+          const t16 = String(tokens[16] || '');
+          const parts = t16.split(';');
+          if (parts[0]) {
+            curHR = parts[0];
+            console.log("Updated HR:", curHR);
+          }
+        }
+
+        if (tokens.length > 9 && tokens[9] !== undefined) {
+          curMF = tokens[9];
+          console.log("Updated MF:", curMF);
+        }
+        if (tokens.length > 8 && tokens[8] !== undefined) {
+          curLF = tokens[8];
+          console.log("Updated LF:", curLF);
+        }
+
+        console.log("Final values - HR:"+curHR+", MF:"+curMF+", LF:"+curLF);
+      } else {
+        console.warn("Starwalk.txt is empty or failed to load");
+      }
+    });
+  } catch (e) {
+    console.error('dataPreceed error:', e);
+  }
+  
+  // 設定下次執行
+  setTimeout(dataPreceed, 1000);
 }
 
 
